@@ -1,0 +1,9 @@
+project:
+  output-dir: _docs
+
+website:
+  title: "fast-deep-rnn"
+  site-url: "https://Hacker1337.github.io/fast-deep-rnn"
+  description: "Deep Learning framework extension allowing more efficiet backpropogation of gradient in a situation with branched computational graph structure"
+  repo-branch: main
+  repo-url: "https://github.com/Hacker1337/fast-deep-rnn"
