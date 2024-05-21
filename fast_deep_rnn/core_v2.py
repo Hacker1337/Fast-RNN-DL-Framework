@@ -25,6 +25,7 @@ class Function:
 
 # %% ../nbs/00.1_core_v2.ipynb 7
 import logging
+# logging.getLogger().setLevel(logging.DEBUG)
 
 
 class Tensor:
@@ -59,7 +60,7 @@ class Tensor:
 
                 if self.func and self._backward_calls_expected <= self._backward_calls:
                     logging.debug(f"Tensor:{self.__name__}. Got all expected backward calls. Passing the gradient further.")
-                    self.func.backward(grad, trial_pass=False)
+                    self.func.backward(self.grad, trial_pass=False)
 
             else:   # the initial point of gradient passing
                 assert trial_pass is None
