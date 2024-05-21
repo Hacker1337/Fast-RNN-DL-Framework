@@ -4,8 +4,8 @@
 __all__ = ['count_forward_calls', 'forks_aware', 'Function', 'Tensor', 'Module', 'one_hot_encoder', 'xavier_', 'Wandb', 'Linear',
            'LinearLayer', 'EmbeddingFunction', 'Embedding', 'sigmoid', 'Sigmoid', 'SigmoidFunction', 'tanh', 'Tanh',
            'TanhFunction', 'GetHStack', 'HStack', 'GetVStack', 'VStack', 'GetRow', 'Row', 'softmax_numpy', 'softmax',
-           'SoftMax', 'SoftMaxFunction', 'NLL', 'CrossEntropyLoss', 'Optimizer', 'SGD', 'Scheduler', 'ConstantLR',
-           'CosineAnnealingLR', 'DataLoader', 'MultiplyFunction', 'Multiply', 'SumFunction', 'Sum']
+           'SoftMax', 'SoftMaxFunction', 'NLL', 'CrossEntropyLoss', 'MultiplyFunction', 'Multiply', 'SumFunction',
+           'Sum']
 
 # %% ../nbs/00_core.ipynb 4
 import numpy as np
@@ -474,95 +474,6 @@ class CrossEntropyLoss(Module):
         return NLL(output, target, self.eps)()
 
 # %% ../nbs/00_core.ipynb 37
-class Optimizer:
-    def __init__(self, params: List[Tensor], lr: float = 0.001):
-        self.params = params
-        self.lr = lr
-
-    def step(self, *args, **kwargs):
-        raise NotImplemented
-
-    def zero_grad(self):
-        for param in self.params:
-            param.zero_grad()
-
-# %% ../nbs/00_core.ipynb 38
-class SGD(Optimizer):
-    def __init__(self, params: List[Tensor], lr: float = 0.001):
-        super().__init__(params, lr)
-
-    def step(self):
-        for param in self.params:
-            param.data -= self.lr * param.grad
-
-# %% ../nbs/00_core.ipynb 39
-class Scheduler:
-    def __init__(self, optimizer: Optimizer, last_epoch: int = -1):
-        self.optimizer = optimizer
-        self.base_lr = optimizer.lr
-        self.last_epoch = last_epoch
-
-    def step(self):
-        raise NotImplementedError
-
-# %% ../nbs/00_core.ipynb 40
-class ConstantLR(Scheduler):
-    def __init__(self, optimizer: Optimizer):
-        super().__init__(optimizer)
-        self.lr = optimizer.lr
-
-    def step(self):
-        self.last_epoch += 1
-
-# %% ../nbs/00_core.ipynb 41
-class CosineAnnealingLR(Scheduler):
-    def __init__(self, optimizer: Optimizer, T_max: int, eta_min: float = 0, anneal_epochs: int = None, last_epoch: int = -1):
-        super().__init__(optimizer)
-        self.T_max = T_max
-        self.eta_min = eta_min
-        self.lr = optimizer.lr
-        self.last_epoch = last_epoch
-        self.start_epoch = last_epoch
-        self.anneal_epochs = anneal_epochs
-
-    @staticmethod
-    def _cosine_anneal(t):
-        return (1 + np.cos(np.pi * t)) / 2
-
-    def get_lr(self):
-        if self.anneal_epochs is not None:
-            passed_epochs = self.last_epoch - self.start_epoch
-            if passed_epochs > self.anneal_epochs:
-                return self.lr
-        t = self.last_epoch / self.T_max
-        return self.eta_min + (self.base_lr - self.eta_min) * self._cosine_anneal(t)
-
-    def step(self):
-        self.lr = self.get_lr()
-        self.optimizer.lr = self.lr
-        self.last_epoch += 1
-
-# %% ../nbs/00_core.ipynb 42
-class DataLoader:
-    def __init__(self, data, target, batch_size=20):
-        self.data = data
-        self.target = target
-        self.batch_size = batch_size
-
-    def next(self):
-        m, _ = self.data.shape
-        rand_index = np.random.choice(m, size=m, replace=False)
-        X, y = self.data[rand_index], self.target[rand_index]
-        pos = 0
-        while pos < m:
-            X_batch, y_batch = X[pos:pos+self.batch_size], y[pos:pos+self.batch_size]
-            yield Tensor(X_batch, name="x"), Tensor(y_batch, name="y")
-            pos += self.batch_size
-
-    def __call__(self):
-        return self.next()
-
-# %% ../nbs/00_core.ipynb 44
 class MultiplyFunction(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
         self.x1 = x1
