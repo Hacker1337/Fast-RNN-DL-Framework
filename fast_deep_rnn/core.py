@@ -22,7 +22,6 @@ def count_forward_calls(obj):
         if isinstance(value, Tensor):
             value._forward_calls += 1
 
-# %% ../nbs/00_core.ipynb 7
 def forks_aware(FunctionClass):
     class WrappedClass:
         def __init__(self, *args, **kwargs):
@@ -34,7 +33,7 @@ def forks_aware(FunctionClass):
             return result
     return WrappedClass
 
-# %% ../nbs/00_core.ipynb 8
+# %% ../nbs/00_core.ipynb 7
 @forks_aware
 class Function:
     def __call__(self) -> "Tensor":
@@ -43,7 +42,7 @@ class Function:
     def backward(self, *args, **kwargs):
         pass
 
-# %% ../nbs/00_core.ipynb 9
+# %% ../nbs/00_core.ipynb 8
 class Tensor:
     def __init__(self, data: np.ndarray, func: Optional[Function]=None, name: str=None):
         self.data: np.ndarray = data
@@ -90,7 +89,7 @@ class Tensor:
     def __str__(self) -> str:
         return str(self.data)
 
-# %% ../nbs/00_core.ipynb 10
+# %% ../nbs/00_core.ipynb 9
 class Module:
     def __init__(self):
         self.parameters: List[Tensor] = []
@@ -188,26 +187,26 @@ class Module:
             if base_class_name == 'Module':
                 module.training = False
 
-# %% ../nbs/00_core.ipynb 11
+# %% ../nbs/00_core.ipynb 10
 def one_hot_encoder(inputs: Tensor, vocab_size: int):
     seq_len, batch_size = inputs.shape
     encoded = np.zeros((seq_len * batch_size, vocab_size))
     encoded[np.arange(seq_len * batch_size), inputs.data.ravel().astype(int)] = 1
     return Tensor(encoded.reshape(seq_len, batch_size, vocab_size))
 
-# %% ../nbs/00_core.ipynb 12
+# %% ../nbs/00_core.ipynb 11
 def xavier_(weights):
     for weight in weights:
         in_dim, out_dim = weight.shape[-2:]
         np.copyto(dst=weight.data, src=np.random.randn(*weight.shape) * np.sqrt(2. / (in_dim + out_dim)))
 
-# %% ../nbs/00_core.ipynb 13
+# %% ../nbs/00_core.ipynb 12
 def Wandb(in_dim, out_dim):
     W = np.random.normal(loc=0, scale=0.1, size=(in_dim, out_dim))
     b = np.random.normal(loc=0, scale=0.1, size=(1, out_dim))
     return Tensor(W, name='weights'), Tensor(b, name='bias')
 
-# %% ../nbs/00_core.ipynb 14
+# %% ../nbs/00_core.ipynb 13
 @forks_aware
 class Linear(Function):
     def __init__(self, x: Tensor, W: Tensor, b: Tensor = None):
@@ -229,7 +228,7 @@ class Linear(Function):
         self.b.backward(db.reshape(self.b.shape))
         self.x.backward(grad.reshape(self.x.shape))
 
-# %% ../nbs/00_core.ipynb 15
+# %% ../nbs/00_core.ipynb 14
 class LinearLayer(Module):
     def __init__(self, in_dim: int, out_dim: int):
         super().__init__()
@@ -240,7 +239,7 @@ class LinearLayer(Module):
     def forward(self, x: Tensor):
         return Linear(x, self.W, self.b)()
 
-# %% ../nbs/00_core.ipynb 16
+# %% ../nbs/00_core.ipynb 15
 @forks_aware
 class EmbeddingFunction(Function):
     def __init__(self, x: Tensor, E: Tensor):
@@ -258,7 +257,7 @@ class EmbeddingFunction(Function):
         np.add.at(dE, self.x.data, grad)
         self.E.backward(dE.reshape(self.E.shape))
 
-# %% ../nbs/00_core.ipynb 17
+# %% ../nbs/00_core.ipynb 16
 class Embedding(Module):
     def __init__(self, vocab_size: int, emb_size: int):
         super().__init__()
@@ -269,12 +268,12 @@ class Embedding(Module):
     def forward(self, x: Tensor):
         return EmbeddingFunction(x, self.E)()
 
-# %% ../nbs/00_core.ipynb 18
+# %% ../nbs/00_core.ipynb 17
 def sigmoid(x):
     s = 1.0 / (1.0 + np.exp(-x))
     return s
 
-# %% ../nbs/00_core.ipynb 19
+# %% ../nbs/00_core.ipynb 18
 @forks_aware
 class Sigmoid(Function):
     def __init__(self, x: Tensor):
@@ -290,7 +289,7 @@ class Sigmoid(Function):
         grad = self.a * (1. - self.a) * grad.reshape(self.a.shape)
         self.x.backward(grad)
 
-# %% ../nbs/00_core.ipynb 20
+# %% ../nbs/00_core.ipynb 19
 class SigmoidFunction(Module):
     def __init__(self):
         super().__init__()
@@ -298,11 +297,11 @@ class SigmoidFunction(Module):
     def forward(self, x: Tensor):
         return Sigmoid(x)()
 
-# %% ../nbs/00_core.ipynb 21
+# %% ../nbs/00_core.ipynb 20
 def tanh(x):
     return (np.exp(x) - np.exp(-x)) / (np.exp(x) + np.exp(-x))
 
-# %% ../nbs/00_core.ipynb 22
+# %% ../nbs/00_core.ipynb 21
 @forks_aware
 class Tanh(Function):
     def __init__(self, x: Tensor):
@@ -318,7 +317,7 @@ class Tanh(Function):
         grad = (1. - self.a ** 2) * grad.reshape(self.a.shape)
         self.x.backward(grad)
 
-# %% ../nbs/00_core.ipynb 23
+# %% ../nbs/00_core.ipynb 22
 class TanhFunction(Module):
     def __init__(self):
         super().__init__()
@@ -326,7 +325,7 @@ class TanhFunction(Module):
     def forward(self, x: Tensor):
         return Tanh(x)()
 
-# %% ../nbs/00_core.ipynb 24
+# %% ../nbs/00_core.ipynb 23
 @forks_aware
 class GetHStack(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
@@ -344,7 +343,7 @@ class GetHStack(Function):
         self.x1.backward(grad[:, :self.x1.shape[1]])
         self.x2.backward(grad[:, self.x1.shape[1]:])
 
-# %% ../nbs/00_core.ipynb 25
+# %% ../nbs/00_core.ipynb 24
 class HStack(Module):
     def __init__(self):
         super().__init__()
@@ -352,7 +351,7 @@ class HStack(Module):
     def forward(self, x1: Tensor, x2: Tensor):
         return GetHStack(x1, x2)()
 
-# %% ../nbs/00_core.ipynb 26
+# %% ../nbs/00_core.ipynb 25
 @forks_aware
 class GetVStack(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
@@ -370,7 +369,7 @@ class GetVStack(Function):
         self.x1.backward(grad[:self.x1.shape[0], :])
         self.x2.backward(grad[self.x1.shape[0]:, :])
 
-# %% ../nbs/00_core.ipynb 27
+# %% ../nbs/00_core.ipynb 26
 class VStack(Module):
     def __init__(self):
         super().__init__()
@@ -378,7 +377,7 @@ class VStack(Module):
     def forward(self, x1: Tensor, x2: Tensor):
         return GetVStack(x1, x2)()
 
-# %% ../nbs/00_core.ipynb 28
+# %% ../nbs/00_core.ipynb 27
 @forks_aware
 class GetRow(Function):
     def __init__(self, x: Tensor, row_idx: int):
@@ -397,7 +396,7 @@ class GetRow(Function):
         dx *= grad
         self.x.backward(dx)
 
-# %% ../nbs/00_core.ipynb 29
+# %% ../nbs/00_core.ipynb 28
 class Row(Module):
     def __init__(self):
         super().__init__()
@@ -405,7 +404,7 @@ class Row(Module):
     def forward(self, x: Tensor, idx: int):
         return GetRow(x, idx)()
 
-# %% ../nbs/00_core.ipynb 30
+# %% ../nbs/00_core.ipynb 29
 def softmax_numpy(x):
     a = np.amax(x, axis=1)[:, np.newaxis]
     ex = np.exp(x - a)
@@ -413,12 +412,12 @@ def softmax_numpy(x):
     out = ex / ex_sum
     return out
 
-# %% ../nbs/00_core.ipynb 31
+# %% ../nbs/00_core.ipynb 30
 def softmax(x: Tensor):
     out = softmax_numpy(x.data)
     return Tensor(out, func=x.func, name="softmax")
 
-# %% ../nbs/00_core.ipynb 32
+# %% ../nbs/00_core.ipynb 31
 @forks_aware
 class SoftMax(Function):
     def __init__(self, x: Tensor):
@@ -435,7 +434,7 @@ class SoftMax(Function):
         grad = np.diagflat(a) - np.dot(a, a.T)
         self.x.backward(grad.reshape(self.x.shape))
 
-# %% ../nbs/00_core.ipynb 33
+# %% ../nbs/00_core.ipynb 32
 class SoftMaxFunction(Module):
     def __init__(self):
         super().__init__()
@@ -443,7 +442,7 @@ class SoftMaxFunction(Module):
     def forward(self, x: Tensor):
         return SoftMax(x)()
 
-# %% ../nbs/00_core.ipynb 34
+# %% ../nbs/00_core.ipynb 33
 @forks_aware
 class NLL(Function):
     def __init__(self, y_hat: Tensor, y: Tensor, eps: float = 1e-15):
@@ -464,7 +463,7 @@ class NLL(Function):
         grad = self.y_hat.data - self.y.data
         self.y_hat.backward(grad / float(self.batch_size)/ float(self.seq_len))
 
-# %% ../nbs/00_core.ipynb 35
+# %% ../nbs/00_core.ipynb 34
 class CrossEntropyLoss(Module):
     def __init__(self, eps=1e-15):
         super().__init__()
@@ -473,7 +472,7 @@ class CrossEntropyLoss(Module):
     def forward(self, output, target):
         return NLL(output, target, self.eps)()
 
-# %% ../nbs/00_core.ipynb 37
+# %% ../nbs/00_core.ipynb 36
 class MultiplyFunction(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
         self.x1 = x1
