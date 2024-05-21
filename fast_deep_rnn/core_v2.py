@@ -15,7 +15,7 @@ from typing import List, Optional, Union, Callable
 import json
 import time
 
-# %% ../nbs/00.1_core_v2.ipynb 5
+# %% ../nbs/00.1_core_v2.ipynb 6
 class Function:
     def __call__(self) -> "Tensor":
         pass
@@ -23,7 +23,7 @@ class Function:
     def backward(self, *args, trial_pass=False, **kwargs):
         pass
 
-# %% ../nbs/00.1_core_v2.ipynb 6
+# %% ../nbs/00.1_core_v2.ipynb 7
 import logging
 
 
@@ -36,28 +36,37 @@ class Tensor:
         self._backward_calls = 0
         self._backward_calls_expected = 0
 
-    def backward(self, grad: Optional[np.ndarray] = None, trial_pass=False):
+    def backward(self, grad: Optional[np.ndarray] = None, trial_pass=None):
         """
         one backward call should be done with trial_pass=True, just to count `_backward_calls_expected`,
         and one with trial_pass=False, to wait for `_backward_calls_expected` calls, sum their gradients and pass them backward only after.
         """
         if trial_pass:
             self._backward_calls_expected += 1
+            logging.debug(f"Tensor:{self.__name__}. Trial pass. Increased number of expected backwards to {self._backward_calls_expected}")
             if self._backward_calls_expected == 1: # first attendance
                 if self.func:
-                    self.func.backward(trial_pass=True)
+                    self.func.backward(grad, trial_pass=True)
         else:
             self._backward_calls += 1
             # print(f'{self.__name__} backward: {self._backward_calls} forward: {self._forward_calls}')
             if grad is not None:
                 assert grad.shape == self.grad.shape
                 self.grad += grad
+                logging.debug(f"Tensor:{self.__name__}. Real pass. Backward call: {self._backward_calls}/{self._backward_calls_expected}")
+                if self._backward_calls > self._backward_calls_expected:
+                    logging.error(f"Tensor:{self.__name__}. Got more backward calls than expected")
+
                 if self.func and self._backward_calls_expected <= self._backward_calls:
-                    if self._backward_calls_expected < self._backward_calls:
-                        logging.warn("got more backward calls than expected")
-                    self.func.backward(grad)
-            else:
+                    logging.debug(f"Tensor:{self.__name__}. Got all expected backward calls. Passing the gradient further.")
+                    self.func.backward(grad, trial_pass=False)
+
+            else:   # the initial point of gradient passing
+                assert trial_pass is None
                 if self.func:
+                    logging.debug(f"Tensor:{self.__name__}. reached the initial point of backward passing. Beginning backward trial pass")
+                    self.func.backward(trial_pass=True)
+                    logging.debug(f"Tensor:{self.__name__}. In the initial point of backward passing. Beginning backward real pass")
                     self.func.backward(trial_pass=False)
 
     def zero_grad(self):
@@ -85,7 +94,7 @@ class Tensor:
     def __str__(self) -> str:
         return str(self.data)
 
-# %% ../nbs/00.1_core_v2.ipynb 7
+# %% ../nbs/00.1_core_v2.ipynb 8
 class Module:
     def __init__(self):
         self.parameters: List[Tensor] = []
@@ -183,26 +192,26 @@ class Module:
             if base_class_name == 'Module':
                 module.training = False
 
-# %% ../nbs/00.1_core_v2.ipynb 8
+# %% ../nbs/00.1_core_v2.ipynb 9
 def one_hot_encoder(inputs: Tensor, vocab_size: int):
     seq_len, batch_size = inputs.shape
     encoded = np.zeros((seq_len * batch_size, vocab_size))
     encoded[np.arange(seq_len * batch_size), inputs.data.ravel().astype(int)] = 1
     return Tensor(encoded.reshape(seq_len, batch_size, vocab_size))
 
-# %% ../nbs/00.1_core_v2.ipynb 9
+# %% ../nbs/00.1_core_v2.ipynb 10
 def xavier_(weights):
     for weight in weights:
         in_dim, out_dim = weight.shape[-2:]
         np.copyto(dst=weight.data, src=np.random.randn(*weight.shape) * np.sqrt(2. / (in_dim + out_dim)))
 
-# %% ../nbs/00.1_core_v2.ipynb 10
+# %% ../nbs/00.1_core_v2.ipynb 11
 def Wandb(in_dim, out_dim):
     W = np.random.normal(loc=0, scale=0.1, size=(in_dim, out_dim))
     b = np.random.normal(loc=0, scale=0.1, size=(1, out_dim))
     return Tensor(W, name='weights'), Tensor(b, name='bias')
 
-# %% ../nbs/00.1_core_v2.ipynb 11
+# %% ../nbs/00.1_core_v2.ipynb 12
 class Linear(Function):
     def __init__(self, x: Tensor, W: Tensor, b: Tensor = None):
         super().__init__()
@@ -219,11 +228,11 @@ class Linear(Function):
         dW = np.dot(self.x.data.T, grad)
         db = grad.sum(axis=0)
         grad = np.dot(grad, self.W.data.T)
-        self.W.backward(dW.reshape(self.W.shape))
-        self.b.backward(db.reshape(self.b.shape))
-        self.x.backward(grad.reshape(self.x.shape))
+        self.W.backward(dW.reshape(self.W.shape), trial_pass)
+        self.b.backward(db.reshape(self.b.shape), trial_pass)
+        self.x.backward(grad.reshape(self.x.shape), trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 12
+# %% ../nbs/00.1_core_v2.ipynb 13
 class LinearLayer(Module):
     def __init__(self, in_dim: int, out_dim: int):
         super().__init__()
@@ -234,7 +243,7 @@ class LinearLayer(Module):
     def forward(self, x: Tensor):
         return Linear(x, self.W, self.b)()
 
-# %% ../nbs/00.1_core_v2.ipynb 13
+# %% ../nbs/00.1_core_v2.ipynb 14
 class EmbeddingFunction(Function):
     def __init__(self, x: Tensor, E: Tensor):
         super().__init__()
@@ -245,13 +254,13 @@ class EmbeddingFunction(Function):
         embeddings = self.E.data[self.x.data.astype('int'), :]
         return Tensor(embeddings, func=self, name="embedding")
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'Embedding: x: {self.x.shape} E: {self.E.shape} grad: {grad.shape}')
         dE = np.zeros_like(self.E.data)
         np.add.at(dE, self.x.data, grad)
-        self.E.backward(dE.reshape(self.E.shape))
+        self.E.backward(dE.reshape(self.E.shape), trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 14
+# %% ../nbs/00.1_core_v2.ipynb 15
 class Embedding(Module):
     def __init__(self, vocab_size: int, emb_size: int):
         super().__init__()
@@ -262,12 +271,12 @@ class Embedding(Module):
     def forward(self, x: Tensor):
         return EmbeddingFunction(x, self.E)()
 
-# %% ../nbs/00.1_core_v2.ipynb 15
+# %% ../nbs/00.1_core_v2.ipynb 16
 def sigmoid(x):
     s = 1.0 / (1.0 + np.exp(-x))
     return s
 
-# %% ../nbs/00.1_core_v2.ipynb 16
+# %% ../nbs/00.1_core_v2.ipynb 17
 class Sigmoid(Function):
     def __init__(self, x: Tensor):
         super().__init__()
@@ -277,12 +286,12 @@ class Sigmoid(Function):
         self.a = sigmoid(self.x.data)
         return Tensor(self.a, func=self, name="sigmoid")
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'Sigmoid: x: {self.x.shape} grad: {grad.shape}')
         grad = self.a * (1. - self.a) * grad.reshape(self.a.shape)
-        self.x.backward(grad)
+        self.x.backward(grad, trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 17
+# %% ../nbs/00.1_core_v2.ipynb 18
 class SigmoidFunction(Module):
     def __init__(self):
         super().__init__()
@@ -290,11 +299,11 @@ class SigmoidFunction(Module):
     def forward(self, x: Tensor):
         return Sigmoid(x)()
 
-# %% ../nbs/00.1_core_v2.ipynb 18
+# %% ../nbs/00.1_core_v2.ipynb 19
 def tanh(x):
     return (np.exp(x) - np.exp(-x)) / (np.exp(x) + np.exp(-x))
 
-# %% ../nbs/00.1_core_v2.ipynb 19
+# %% ../nbs/00.1_core_v2.ipynb 20
 class Tanh(Function):
     def __init__(self, x: Tensor):
         super().__init__()
@@ -304,12 +313,12 @@ class Tanh(Function):
         self.a = np.tanh(self.x.data)
         return Tensor(self.a, func=self, name="tanh")
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'Tanh: x: {self.x.shape} grad: {grad.shape}')
         grad = (1. - self.a ** 2) * grad.reshape(self.a.shape)
-        self.x.backward(grad)
+        self.x.backward(grad, trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 20
+# %% ../nbs/00.1_core_v2.ipynb 21
 class TanhFunction(Module):
     def __init__(self):
         super().__init__()
@@ -317,7 +326,7 @@ class TanhFunction(Module):
     def forward(self, x: Tensor):
         return Tanh(x)()
 
-# %% ../nbs/00.1_core_v2.ipynb 21
+# %% ../nbs/00.1_core_v2.ipynb 22
 class GetHStack(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
         super().__init__()
@@ -328,13 +337,13 @@ class GetHStack(Function):
         stacked = np.hstack((self.x1.data, self.x2.data))
         return Tensor(stacked, func=self, name="hstack")
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'HStack: x1: {self.x1.shape} x2: {self.x2.shape} grad: {grad.shape}')
         assert grad.shape[1] == (self.x1.shape[1] + self.x2.shape[1])
-        self.x1.backward(grad[:, :self.x1.shape[1]])
-        self.x2.backward(grad[:, self.x1.shape[1]:])
+        self.x1.backward(grad[:, :self.x1.shape[1]], trial_pass)
+        self.x2.backward(grad[:, self.x1.shape[1]:], trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 22
+# %% ../nbs/00.1_core_v2.ipynb 23
 class HStack(Module):
     def __init__(self):
         super().__init__()
@@ -342,7 +351,7 @@ class HStack(Module):
     def forward(self, x1: Tensor, x2: Tensor):
         return GetHStack(x1, x2)()
 
-# %% ../nbs/00.1_core_v2.ipynb 23
+# %% ../nbs/00.1_core_v2.ipynb 24
 class GetVStack(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
         super().__init__()
@@ -353,13 +362,13 @@ class GetVStack(Function):
         stacked = np.vstack((self.x1.data, self.x2.data))
         return Tensor(stacked, func=self, name="vstack")
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'VStack: x1: {self.x1.shape} x2: {self.x2.shape} grad: {grad.shape}')
         grad = grad.reshape((self.x1.shape[0] + self.x2.shape[0], self.x1.shape[1], -1))
-        self.x1.backward(grad[:self.x1.shape[0], :])
-        self.x2.backward(grad[self.x1.shape[0]:, :])
+        self.x1.backward(grad[:self.x1.shape[0], :], trial_pass)
+        self.x2.backward(grad[self.x1.shape[0]:, :], trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 24
+# %% ../nbs/00.1_core_v2.ipynb 25
 class VStack(Module):
     def __init__(self):
         super().__init__()
@@ -367,7 +376,7 @@ class VStack(Module):
     def forward(self, x1: Tensor, x2: Tensor):
         return GetVStack(x1, x2)()
 
-# %% ../nbs/00.1_core_v2.ipynb 25
+# %% ../nbs/00.1_core_v2.ipynb 26
 class GetRow(Function):
     def __init__(self, x: Tensor, row_idx: int):
         super().__init__()
@@ -378,14 +387,14 @@ class GetRow(Function):
         row = self.x.data[self.row_idx]
         return Tensor(row, func=self, name="row_"+str(self.row_idx))
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'Row: x: {self.x.shape} grad: {grad.shape}')
         dx = np.zeros_like(self.x.data)
         dx[self.row_idx] = 1
         dx *= grad
-        self.x.backward(dx)
+        self.x.backward(dx, trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 26
+# %% ../nbs/00.1_core_v2.ipynb 27
 class Row(Module):
     def __init__(self):
         super().__init__()
@@ -393,7 +402,7 @@ class Row(Module):
     def forward(self, x: Tensor, idx: int):
         return GetRow(x, idx)()
 
-# %% ../nbs/00.1_core_v2.ipynb 27
+# %% ../nbs/00.1_core_v2.ipynb 28
 def softmax_numpy(x):
     a = np.amax(x, axis=1)[:, np.newaxis]
     ex = np.exp(x - a)
@@ -401,12 +410,12 @@ def softmax_numpy(x):
     out = ex / ex_sum
     return out
 
-# %% ../nbs/00.1_core_v2.ipynb 28
+# %% ../nbs/00.1_core_v2.ipynb 29
 def softmax(x: Tensor):
     out = softmax_numpy(x.data)
     return Tensor(out, func=x.func, name="softmax")
 
-# %% ../nbs/00.1_core_v2.ipynb 29
+# %% ../nbs/00.1_core_v2.ipynb 30
 class SoftMax(Function):
     def __init__(self, x: Tensor):
         super().__init__()
@@ -416,13 +425,13 @@ class SoftMax(Function):
         self.a = softmax_numpy(self.x.data)
         return Tensor(self.a, func=self, name="softmax")
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         # print(f'Softmax: x: {self.x.shape} grad: {grad.shape}')
         a = self.a.reshape(-1, 1)
         grad = np.diagflat(a) - np.dot(a, a.T)
-        self.x.backward(grad.reshape(self.x.shape))
+        self.x.backward(grad.reshape(self.x.shape), trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 30
+# %% ../nbs/00.1_core_v2.ipynb 31
 class SoftMaxFunction(Module):
     def __init__(self):
         super().__init__()
@@ -430,7 +439,7 @@ class SoftMaxFunction(Module):
     def forward(self, x: Tensor):
         return SoftMax(x)()
 
-# %% ../nbs/00.1_core_v2.ipynb 31
+# %% ../nbs/00.1_core_v2.ipynb 32
 class NLL(Function):
     def __init__(self, y_hat: Tensor, y: Tensor, eps: float = 1e-15):
         super().__init__()
@@ -446,11 +455,11 @@ class NLL(Function):
         loss = np.multiply(-self.y.data, logs).sum(axis=1).mean()
         return Tensor(loss, func=self, name="nll")
 
-    def backward(self):
+    def backward(self, trial_pass):
         grad = self.y_hat.data - self.y.data
-        self.y_hat.backward(grad / float(self.batch_size)/ float(self.seq_len))
+        self.y_hat.backward(grad / float(self.batch_size)/ float(self.seq_len), trial_pass)
 
-# %% ../nbs/00.1_core_v2.ipynb 32
+# %% ../nbs/00.1_core_v2.ipynb 33
 class CrossEntropyLoss(Module):
     def __init__(self, eps=1e-15):
         super().__init__()
@@ -459,7 +468,7 @@ class CrossEntropyLoss(Module):
     def forward(self, output, target):
         return NLL(output, target, self.eps)()
 
-# %% ../nbs/00.1_core_v2.ipynb 34
+# %% ../nbs/00.1_core_v2.ipynb 35
 class MultiplyFunction(Function):
     def __init__(self, x1: Tensor, x2: Tensor):
         self.x1 = x1
@@ -468,10 +477,10 @@ class MultiplyFunction(Function):
     def __call__(self):
         return Tensor(self.x1.data * self.x2.data, func=self)
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         grad = grad.reshape(self.x1.shape)
-        self.x1.backward(self.x2.data*grad)
-        self.x2.backward(self.x1.data*grad)
+        self.x1.backward(self.x2.data*grad, trial_pass)
+        self.x2.backward(self.x1.data*grad, trial_pass)
 
 
 class Multiply(Module):
@@ -490,10 +499,10 @@ class SumFunction(Function):
     def __call__(self):
         return Tensor(self.x1.data+self.x2.data, func=self)
 
-    def backward(self, grad: np.ndarray):
+    def backward(self, grad: np.ndarray, trial_pass):
         grad = grad.reshape(self.x1.shape)
-        self.x1.backward(grad)
-        self.x2.backward(grad)
+        self.x1.backward(grad, trial_pass)
+        self.x2.backward(grad, trial_pass)
 
 
 class Sum(Module):
