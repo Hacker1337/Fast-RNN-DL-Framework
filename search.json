@@ -1,0 +1,192 @@
+[
+  {
+    "objectID": "00.1_core_v2.html",
+    "href": "00.1_core_v2.html",
+    "title": "core",
+    "section": "",
+    "text": "class SGD:\n    def __init__(self, learning_rate=0.001):\n        self.learning_rate = learning_rate\n\n    def step(self, grads, params, learning_rate=None):\n        if learning_rate is None:\n            learning_rate = self.learning_rate\n        for param, grad in zip(params, grads):\n            param -= learning_rate*grad\nsource",
+    "crumbs": [
+      "core"
+    ]
+  },
+  {
+    "objectID": "00.1_core_v2.html#rnn-specific-operations",
+    "href": "00.1_core_v2.html#rnn-specific-operations",
+    "title": "core",
+    "section": "RNN specific operations",
+    "text": "RNN specific operations\n\nsource\n\nSum\n\n Sum ()\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nSumFunction\n\n SumFunction (x1:__main__.Tensor, x2:__main__.Tensor)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nMultiply\n\n Multiply ()\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nMultiplyFunction\n\n MultiplyFunction (x1:__main__.Tensor, x2:__main__.Tensor)\n\nInitialize self. See help(type(self)) for accurate signature.",
+    "crumbs": [
+      "core"
+    ]
+  },
+  {
+    "objectID": "lstm_training.html",
+    "href": "lstm_training.html",
+    "title": "Imports",
+    "section": "",
+    "text": "# #| hide\n# %load_ext autoreload\n# %autoreload 2",
+    "crumbs": [
+      "Imports"
+    ]
+  },
+  {
+    "objectID": "lstm_training.html#sorting-training",
+    "href": "lstm_training.html#sorting-training",
+    "title": "Imports",
+    "section": "Sorting training",
+    "text": "Sorting training\n\nclass RecurrentNetwork(Module):\n    def __init__(self, vocab_size: int, emb_size: int, hidden_size: int):\n        super().__init__()\n        self.emb_size = emb_size\n        self.hidden_size = hidden_size\n        self.embedding = Embedding(vocab_size, emb_size)\n        self.rnn = LSTM(emb_size, hidden_size)\n        self.linear = LinearLayer(hidden_size, vocab_size)\n        xavier_(self.linear.parameters)\n        self.register_parameters([self.embedding, self.rnn, self.linear])\n\n    def forward(self, x: Tensor):\n        emb = self.embedding(x)\n        rnn_out = self.rnn(emb)\n        linear_out = self.linear(rnn_out.reshape(-1, self.hidden_size))\n        return linear_out\n\n\nnum_epochs = 50\nvocab_size = len(vocab)\nemb_size = 20\nhidden_size = 32\nbatch_size = 100\ndataloader = DataLoader(dataset_inputs, dataset_targets, batch_size=batch_size)\nmodel = RecurrentNetwork(vocab_size, emb_size, hidden_size)\nloss_function = CrossEntropyLoss()\noptimizer = SGD(model.parameters, lr=1.0)\nscheduler = ConstantLR(optimizer)\n\n\nmodel.size()\n\n7420\n\n\n\nlosses = []\naccuracies = []\nlrs = []\nfor epoch in range(num_epochs):\n    loss_sum = 0\n    for data in dataloader():\n        optimizer.zero_grad()\n        inputs, targets = data\n        inputs = inputs.transpose(1, 0)\n        targets = targets.transpose(1, 0)\n        outputs = model(inputs)\n        loss = loss_function(outputs, targets)\n        loss.backward()\n        optimizer.step()\n        loss_sum += loss.data\n        # print(\"done step\")\n    acc = eval_accuracy(model, inputs.data, targets.data)\n    print(f'\\r epoch: [{epoch+1}/{num_epochs}], loss: {loss_sum}, acc: {acc}', end='')\n    losses.append(loss_sum)\n    accuracies.append(acc)\n    lrs.append(scheduler.lr)\n    scheduler.step()\n\n epoch: [50/50], loss: 3.656906291182772, acc: 0.855625\n\n\n\nepochs = np.arange(num_epochs)\nfig, ax = plt.subplots(1, 2, figsize=(15,5))\nax[0].plot(epochs, losses)\nax[0].set_title('Losses')\nax[1].plot(epochs, accuracies)\nax[1].set_title('Accuracy');\n\n\n\n\n\n\n\n\n\nnum_examples = 100\nseq_len = 3\nmax_number = 10\n\ninputs, targets = get_examples(seq_len, num_examples, max_number)\n\ninputs = to_string(inputs, seq_len, max_number)\ntargets = to_string(targets, seq_len, max_number)\n\ninputs = integer_encode(inputs, vocab)\ntargets = integer_encode(targets, vocab)\n\ninputs, targets = Tensor(np.array(inputs).transpose((1, 0))), Tensor(np.array(targets).transpose((1, 0)))\noutputs = model(inputs)\npredicted = np.argmax(outputs.data, axis=1)\n\n\nLetsPlot.setup_html()\n\n\n            \n            \n            \n\n\n\ngg_confusion_matrix(targets.data.reshape(-1), predicted)",
+    "crumbs": [
+      "Imports"
+    ]
+  },
+  {
+    "objectID": "lstm_training.html#benchmarking-training-and-evaluating-time-step",
+    "href": "lstm_training.html#benchmarking-training-and-evaluating-time-step",
+    "title": "Imports",
+    "section": "Benchmarking training and evaluating time step:",
+    "text": "Benchmarking training and evaluating time step:\n\ndata = next(iter(dataloader()))\ninputs, targets = data\ninputs = inputs.transpose(1, 0)\ntargets = targets.transpose(1, 0)\nprint(inputs.shape)\n\n(8, 100)\n\n\n\n# inference step\noutputs = model(inputs)\n\n7.31 ms ± 717 µs per loop (mean ± std. dev. of 7 runs, 100 loops each)\n\n\n\n# training step\noutputs = model(inputs)\noptimizer.zero_grad()\nloss = loss_function(outputs, targets)\nloss.backward()\noptimizer.step()\n\n23.4 ms ± 717 µs per loop (mean ± std. dev. of 7 runs, 10 loops each)",
+    "crumbs": [
+      "Imports"
+    ]
+  },
+  {
+    "objectID": "lstm_training.html#checks",
+    "href": "lstm_training.html#checks",
+    "title": "Imports",
+    "section": "Checks",
+    "text": "Checks\n\n# original - passes test\nnum_examples = 100\nseq_len = 2\nmax_number = 10\nvocab_size = len(vocab)\nemb_size = 20\nhidden_size = 32\n\nX_val, y_val = get_examples(seq_len, num_examples, max_number)\nX_val, y_val = X_val.transpose(1, 0), y_val.transpose(1, 0)\n\n\nloss_function = CrossEntropyLoss()\nmodel_ = RecurrentNetwork(vocab_size, emb_size, hidden_size)\ndJ_theta_tensors = dJ_theta_global(model_, loss_function, Tensor(X_val), Tensor(y_val))\nglobal_start = time.time()\nfor i, parameter in enumerate(model_.parameters):\n    start = time.time()\n    print(f'[{i}]: Start -- {parameter.__name__}')\n    def J_theta(theta, idx=i, x=Tensor(X_val), y=Tensor(y_val)):\n        return J_theta_global(model_, loss_function, theta, idx, x, y)\n    gradient_checker(J_theta, dJ_theta_tensors[i], parameter.data)\n    print(f'[{i}]: Elapsed time: {time.time() - start:.1f}s')\nprint(f'Total elapsed time: {time.time() - global_start:.1f}s')\n\n[0]: Start -- E\nGradient check passed\n[0]: Elapsed time: 1.0s\n[1]: Start -- weights\nGradient check passed\n[1]: Elapsed time: 8.8s\n[2]: Start -- bias\nGradient check passed\n[2]: Elapsed time: 0.1s\n[3]: Start -- weights\nGradient check passed\n[3]: Elapsed time: 5.2s\n[4]: Start -- bias\nGradient check passed\n[4]: Elapsed time: 0.1s\n[5]: Start -- weights\nGradient check passed\n[5]: Elapsed time: 5.6s\n[6]: Start -- bias\nGradient check passed\n[6]: Elapsed time: 0.1s\n[7]: Start -- weights\nGradient check passed\n[7]: Elapsed time: 6.1s\n[8]: Start -- bias\nGradient check passed\n[8]: Elapsed time: 0.1s\n[9]: Start -- weights\nGradient check passed\n[9]: Elapsed time: 1.2s\n[10]: Start -- bias\nGradient check passed\n[10]: Elapsed time: 0.0s\nTotal elapsed time: 28.1s",
+    "crumbs": [
+      "Imports"
+    ]
+  },
+  {
+    "objectID": "core.html",
+    "href": "core.html",
+    "title": "core",
+    "section": "",
+    "text": "class SGD:\n    def __init__(self, learning_rate=0.001):\n        self.learning_rate = learning_rate\n\n    def step(self, grads, params, learning_rate=None):\n        if learning_rate is None:\n            learning_rate = self.learning_rate\n        for param, grad in zip(params, grads):\n            param -= learning_rate*grad\nsource",
+    "crumbs": [
+      "core"
+    ]
+  },
+  {
+    "objectID": "core.html#rnn-specific-operations",
+    "href": "core.html#rnn-specific-operations",
+    "title": "core",
+    "section": "RNN specific operations",
+    "text": "RNN specific operations\n\nsource\n\nSum\n\n Sum ()\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nSumFunction\n\n SumFunction (x1:__main__.Tensor, x2:__main__.Tensor)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nMultiply\n\n Multiply ()\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nMultiplyFunction\n\n MultiplyFunction (x1:__main__.Tensor, x2:__main__.Tensor)\n\nInitialize self. See help(type(self)) for accurate signature.",
+    "crumbs": [
+      "core"
+    ]
+  },
+  {
+    "objectID": "02_minimal_training.html",
+    "href": "02_minimal_training.html",
+    "title": "fast-deep-rnn",
+    "section": "",
+    "text": "# %load_ext autoreload\n# %autoreload 2\nMinimal example of exponential growth of the trajectories.\n# from fast_deep_rnn.core import *\nfrom fast_deep_rnn.core_v2 import *\nfrom fast_deep_rnn.common_core import *\nfrom fast_deep_rnn.sort_training import *\n\nfrom typing import List, Optional, Union, Callable\nimport numpy as np",
+    "crumbs": [
+      "Operations:"
+    ]
+  },
+  {
+    "objectID": "02_minimal_training.html#operations",
+    "href": "02_minimal_training.html#operations",
+    "title": "fast-deep-rnn",
+    "section": "Operations:",
+    "text": "Operations:\n-LinearLayer -TanhFunction -HStack -VStack -Sum -Row -Embedding -CrossEntropyLoss\n\nclass RNNCell(Module):\n    def __init__(self, state_size: int, hidden_size: int):\n        super().__init__()\n        self.linear1 = LinearLayer(state_size, hidden_size)\n        self.linear2 = LinearLayer(state_size, hidden_size)\n        self.tanh = TanhFunction()\n        self.hstack = HStack()\n        self.sum = Sum()\n        self.register_parameters([self.linear1, self.linear2])\n\n    def forward(self, x: Tensor, h_t_1: Optional[Tensor] = None):\n        X = self.hstack(x, h_t_1)\n        z1 = self.linear1(X)\n        z2 = self.linear2(X)\n        z = self.sum(z1, z2)\n        h_t = self.tanh(z)\n        return h_t\n\n\nclass RNN(Module):\n    def __init__(self, input_size: int, hidden_size: int):\n        super().__init__()\n        self.input_size = input_size\n        self.hidden_size = hidden_size\n        self.state_size = input_size + hidden_size\n        self.rnn = RNNCell(self.state_size, hidden_size)\n        self. row = Row()\n        self.vstack = VStack()\n        self.register_parameters([self.rnn])\n\n    def forward(self, x: Tensor, h_t_1: Optional[Tensor] = None):\n        seq_len, batch_size, input_size = x.shape\n        # print(f'seq_len: {seq_len} batch_size: {batch_size} input_size: {input_size}')\n        h = Tensor(np.zeros((0, batch_size, self.hidden_size)), name=\"h\")\n        if h_t_1 is None:\n            h_t_1 = Tensor(np.zeros((batch_size, self.hidden_size)), name=\"h_t_1\")\n        for idx in range(seq_len):\n            h_t_1 = self.rnn.forward(self.row(x, idx), h_t_1)\n            h = self.vstack(h, h_t_1.reshape((1, batch_size, self.hidden_size)))\n        return h\n\n\nclass RecurrentNetwork(Module):\n    def __init__(self, vocab_size: int, emb_size: int, hidden_size: int):\n        super().__init__()\n        self.emb_size = emb_size\n        self.hidden_size = hidden_size\n        self.embedding = Embedding(vocab_size, emb_size)\n        self.rnn = RNN(emb_size, hidden_size)\n        self.linear = LinearLayer(hidden_size, vocab_size)\n        xavier_(self.linear.parameters)\n        self.register_parameters([self.embedding, self.rnn, self.linear])\n\n    def forward(self, x: Tensor):\n        emb = self.embedding(x)\n        rnn_out = self.rnn(emb)\n        linear_out = self.linear(rnn_out.reshape(-1, self.hidden_size))\n        return linear_out\n\n\nemb_size = 20\nhidden_size = 32\nvocab_size = len(vocab)\n\nmax_number = 10\n\nmodel = RecurrentNetwork(vocab_size, emb_size, hidden_size)\noptimizer = SGD(model.parameters, lr=1.0)\nloss_function = CrossEntropyLoss()",
+    "crumbs": [
+      "Operations:"
+    ]
+  },
+  {
+    "objectID": "02_minimal_training.html#gradient-check",
+    "href": "02_minimal_training.html#gradient-check",
+    "title": "fast-deep-rnn",
+    "section": "Gradient check",
+    "text": "Gradient check\n\nnum_examples = 5\nseq_len = 2\n\nX_val, y_val = get_examples(seq_len, num_examples, max_number)\nX_val, y_val = X_val.transpose(1, 0), y_val.transpose(1, 0)\n\n\nimport time\n\n\nloss_function = CrossEntropyLoss()\nmodel_ = RecurrentNetwork(vocab_size, emb_size, hidden_size)\ndJ_theta_tensors = dJ_theta_global(model_, loss_function, Tensor(X_val), Tensor(y_val))\nglobal_start = time.time()\nfor i, parameter in enumerate(model_.parameters):\n    start = time.time()\n    print(f'[{i}]: Start -- {parameter.__name__}')\n    def J_theta(theta, idx=i, x=Tensor(X_val), y=Tensor(y_val)):\n        return J_theta_global(model_, loss_function, theta, idx, x, y)\n    gradient_checker(J_theta, dJ_theta_tensors[i], parameter.data)\n    print(f'[{i}]: Elapsed time: {time.time() - start:.1f}s')\nprint(f'Total elapsed time: {time.time() - global_start:.1f}s')\n\n[0]: Start -- E\nGradient check passed\n[0]: Elapsed time: 0.3s\n[1]: Start -- weights\nGradient check passed\n[1]: Elapsed time: 1.5s\n[2]: Start -- bias\nGradient check passed\n[2]: Elapsed time: 0.0s\n[3]: Start -- weights\nGradient check passed\n[3]: Elapsed time: 1.2s\n[4]: Start -- bias\nGradient check passed\n[4]: Elapsed time: 0.0s\n[5]: Start -- weights\nGradient check passed\n[5]: Elapsed time: 0.3s\n[6]: Start -- bias\nGradient check passed\n[6]: Elapsed time: 0.0s\nTotal elapsed time: 3.3s",
+    "crumbs": [
+      "Operations:"
+    ]
+  },
+  {
+    "objectID": "02_minimal_training.html#benchmarking-training-and-evaluating-time-step",
+    "href": "02_minimal_training.html#benchmarking-training-and-evaluating-time-step",
+    "title": "fast-deep-rnn",
+    "section": "Benchmarking training and evaluating time step:",
+    "text": "Benchmarking training and evaluating time step:\n\nnum_examples = 1\nseq_len = 2\n\nX_val, y_val = get_examples(seq_len, num_examples, max_number)\nX_val, y_val = X_val.transpose(1, 0), y_val.transpose(1, 0)\nX_val, y_val = Tensor(X_val), Tensor(y_val)\n\nprint(X_val.shape)\n\n(2, 1)\n\n\n\n# inference step\noutputs = model(X_val)\n\n158 µs ± 56.8 µs per loop (mean ± std. dev. of 7 runs, 10000 loops each)\n\n\n\n# training step\noutputs = model(X_val)\noptimizer.zero_grad()\nloss = loss_function(outputs, y_val)\nloss.backward()\noptimizer.step()\n\n869 µs ± 173 µs per loop (mean ± std. dev. of 7 runs, 1000 loops each)\n\n\n\nseq_range = range(2, 8)\n\n\nimport timeit\n\n\nfor seq_len in seq_range:\n    X_val, y_val = get_examples(seq_len, num_examples, max_number)\n    X_val, y_val = X_val.transpose(1, 0), y_val.transpose(1, 0)\n    X_val, y_val = Tensor(X_val), Tensor(y_val)\n    spent_time = timeit.timeit(\"model(X_val)\", globals=globals(), number=1000)\n    print(seq_len, spent_time, sep=\"\\t\")\n\n2   0.15854730003047734\n3   0.16856139997253194\n4   0.21715909999329597\n5   0.2574560000211932\n6   0.35955930000636727\n7   0.4283828999614343\n\n\n\n# seq_range = range(2, 30)\n\n\nfor seq_len in seq_range:\n    X_val, y_val = get_examples(seq_len, num_examples, max_number)\n    X_val, y_val = X_val.transpose(1, 0), y_val.transpose(1, 0)\n    X_val, y_val = Tensor(X_val), Tensor(y_val)\n    spent_time = timeit.timeit(\"\"\"\noutputs = model(X_val)\noptimizer.zero_grad()\nloss = loss_function(outputs, y_val)\nloss.backward()\n\"\"\", globals=globals(), number=1000)\n    print(seq_len, spent_time, sep=\"\\t\")\n\n2   1.962316400022246\n3   1.3589860000065528\n4   1.340682200039737\n5   1.8291109999991022\n6   2.1069180999766104\n7   2.0644981999648735",
+    "crumbs": [
+      "Operations:"
+    ]
+  },
+  {
+    "objectID": "02_minimal_training.html#training",
+    "href": "02_minimal_training.html#training",
+    "title": "fast-deep-rnn",
+    "section": "Training",
+    "text": "Training\n\nnum_epochs = 1\nvocab_size = len(vocab)\nemb_size = 20\nhidden_size = 32\nbatch_size = 100\ndataloader = DataLoader(dataset_inputs, dataset_targets, batch_size=batch_size)\nmodel = RecurrentNetwork(vocab_size, emb_size, hidden_size)\nloss_function = CrossEntropyLoss()\noptimizer = SGD(model.parameters, lr=1.0)\n# optimizer = Adam(model.parameters, alpha=0.1, beta1=0.9, beta2=0.999, eps=1e-8, weight_decay=0.01)\nscheduler = ConstantLR(optimizer)\n\n\nmodel.size()\n\n4028\n\n\n\nlosses = []\naccuracies = []\nlrs = []\nfor epoch in range(num_epochs):\n    loss_sum = 0\n    for data in dataloader():\n        optimizer.zero_grad()\n        inputs, targets = data\n        inputs = inputs.transpose(1, 0)\n        targets = targets.transpose(1, 0)\n        outputs = model(inputs)\n        loss = loss_function(outputs, targets)\n        loss.backward()\n        optimizer.step()\n        loss_sum += loss.data\n    acc = eval_accuracy(model, inputs.data, targets.data)\n    print(f'\\r epoch: [{epoch+1}/{num_epochs}], loss: {loss_sum}, acc: {acc}', end='')\n    losses.append(loss_sum)\n    accuracies.append(acc)\n    lrs.append(scheduler.lr)\n    scheduler.step()\n\n epoch: [1/1], loss: 28.61802380904835, acc: 0.64375",
+    "crumbs": [
+      "Operations:"
+    ]
+  },
+  {
+    "objectID": "000_common_core.html",
+    "href": "000_common_core.html",
+    "title": "fast-deep-rnn",
+    "section": "",
+    "text": "source",
+    "crumbs": [
+      "Second part"
+    ]
+  },
+  {
+    "objectID": "000_common_core.html#second-part",
+    "href": "000_common_core.html#second-part",
+    "title": "fast-deep-rnn",
+    "section": "Second part",
+    "text": "Second part\n\nsource\n\nOptimizer\n\n Optimizer (params:List[fast_deep_rnn.core.Tensor], lr:float=0.001)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nSGD\n\n SGD (params:List[fast_deep_rnn.core.Tensor], lr:float=0.001)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nScheduler\n\n Scheduler (optimizer:__main__.Optimizer, last_epoch:int=-1)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nConstantLR\n\n ConstantLR (optimizer:__main__.Optimizer)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nCosineAnnealingLR\n\n CosineAnnealingLR (optimizer:__main__.Optimizer, T_max:int,\n                    eta_min:float=0, anneal_epochs:int=None,\n                    last_epoch:int=-1)\n\nInitialize self. See help(type(self)) for accurate signature.\n\nsource\n\n\nDataLoader\n\n DataLoader (data, target, batch_size=20)\n\nInitialize self. See help(type(self)) for accurate signature.",
+    "crumbs": [
+      "Second part"
+    ]
+  },
+  {
+    "objectID": "000_common_core.html#gradients-check",
+    "href": "000_common_core.html#gradients-check",
+    "title": "fast-deep-rnn",
+    "section": "Gradients check",
+    "text": "Gradients check\n\nsource\n\ndJ_theta_global\n\n dJ_theta_global (model, loss_function, x, y)\n\n\nsource\n\n\nJ_theta_global\n\n J_theta_global (model, loss_function, theta, idx, x, y)\n\n\nsource\n\n\ngradient_checker\n\n gradient_checker (J, grad_J, theta, eps=1e-05, rtol=1e-05)\n\nGradient checker for scalar and vector functions Args: J - function of theta grad_J - gradient of function J theta - the point for which to compute the numerical gradient eps - step value in numerical gradient rtol - relative tolerance threshold value Returns: error message if the relative tolerance is greater for some axis or “Gradient check passed” else",
+    "crumbs": [
+      "Second part"
+    ]
+  },
+  {
+    "objectID": "index.html",
+    "href": "index.html",
+    "title": "fast-deep-rnn",
+    "section": "",
+    "text": "This is the Course Project for the DeepLearning University Course.",
+    "crumbs": [
+      "fast-deep-rnn"
+    ]
+  },
+  {
+    "objectID": "index.html#install",
+    "href": "index.html#install",
+    "title": "fast-deep-rnn",
+    "section": "Install",
+    "text": "Install\nLibrary can be installed from the PyPI via\npip install fast_deep_rnn",
+    "crumbs": [
+      "fast-deep-rnn"
+    ]
+  },
+  {
+    "objectID": "index.html#structure",
+    "href": "index.html#structure",
+    "title": "fast-deep-rnn",
+    "section": "Structure",
+    "text": "Structure\nOverall, the project is build with nbdev platform, and organized according to its standards. Jupyter notebooks with code are located in nbs and fast_deep_rnn is a python library generated from the notebooks automatically.\ncore module contains the original core of the framework with Tensor class implementation and the set of differentiable operations, organized in Modules.\ncore_v2 module contains the alternative proposed implementation, resulting in much faster gradient computing in RNN-s.\nNotebook nbs/02_minimal_training.ipynb contains the simplest example of model, having exponential growth in original gradient computing, and benchmarking function to measure this growth. git tags baseline_benchmark_results and solution_benchmark_results contain corresponding benchmark results inside the notebook.\nNotebook nbs/01_lstm_training.ipynb contains training of LSTM on number sorting task, which became possible only after the implemented optimization.\nPresentation of the work with algorithm explanation is in report/Presentation. Fast Backprop for RNNs.pdf",
+    "crumbs": [
+      "fast-deep-rnn"
+    ]
+  }
+]
